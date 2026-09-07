@@ -1,0 +1,12 @@
+.env
+baseline.json
+*.tar.gz
+__pycache__/
+.DS_Store
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+*.tfplan

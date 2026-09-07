@@ -1,0 +1,193 @@
+---
+- name: Generate a backup identifier
+  ansible.builtin.set_fact:
+    ark_backup_id: "{{ ansible_date_time.iso8601_basic_short }}"
+    ark_backup_started: "{{ ansible_date_time.iso8601 }}"
+
+- name: Set the backup directory
+  ansible.builtin.set_fact:
+    ark_backup_dir: "{{ ark_backup_root }}/{{ ark_backup_id }}"
+
+- name: Create the backup directory
+  ansible.builtin.file:
+    path: "{{ ark_backup_dir }}"
+    state: directory
+    mode: "0750"
+  become: true
+
+- name: Confirm the stack is running before backing it up
+  ansible.builtin.command:
+    cmd: "docker inspect -f {% raw %}'{{.State.Running}}'{% endraw %} {{ ark_db_container }}"
+  register: ark_db_state
+  changed_when: false
+  failed_when: ark_db_state.stdout.strip() != "true"
+
+# ---------------------------------------------------------------------------
+# 1. Fingerprint BEFORE the backup.
+#    Stored inside the manifest so a restore can be verified against the exact
+#    state that was captured, with no external baseline file required.
+# ---------------------------------------------------------------------------
+
+- name: Capture the source fingerprint
+  ansible.builtin.command:
+    cmd: ./scripts/fingerprint.sh
+    chdir: "{{ ark_stack_dir }}"
+  register: ark_source_fingerprint
+  changed_when: false
+
+# ---------------------------------------------------------------------------
+# 2. Database dump. pg_dump is consistent against a running database, so this
+#    happens before the application is stopped.
+# ---------------------------------------------------------------------------
+
+- name: Dump the PostgreSQL database
+  ansible.builtin.shell:
+    cmd: >
+      set -o pipefail &&
+      docker exec {{ ark_db_container }}
+      pg_dump -U {{ ark_db_user }} -d {{ ark_db_name }} --clean --if-exists
+      | gzip -9 > {{ ark_backup_dir }}/database.sql.gz
+    executable: /bin/bash
+  become: true
+  changed_when: true
+
+- name: Verify the dump is not empty
+  ansible.builtin.stat:
+    path: "{{ ark_backup_dir }}/database.sql.gz"
+  register: ark_dump_stat
+  become: true
+  failed_when: ark_dump_stat.stat.size < 1024
+
+# ---------------------------------------------------------------------------
+# 3. Volume archives. The application is stopped first so the Git object store
+#    is not written to mid-archive. The database container keeps running.
+# ---------------------------------------------------------------------------
+
+- name: Stop the application container for a consistent volume snapshot
+  ansible.builtin.command:
+    cmd: "docker stop {{ ark_app_container }}"
+  when: ark_stop_app_during_backup | bool
+  changed_when: true
+
+- name: Archive Docker volumes
+  ansible.builtin.command:
+    cmd: >
+      docker run --rm
+      -v {{ ark_compose_project }}_{{ item }}:/source:ro
+      -v {{ ark_backup_dir }}:/backup
+      alpine:3.20
+      tar czf /backup/volume-{{ item }}.tar.gz -C /source .
+  loop: "{{ ark_volumes }}"
+  become: true
+  changed_when: true
+
+- name: Restart the application container
+  ansible.builtin.command:
+    cmd: "docker start {{ ark_app_container }}"
+  when: ark_stop_app_during_backup | bool
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# 4. Configuration. Without GITEA_SECRET_KEY the restored database cannot
+#    decrypt its own session and token data.
+# ---------------------------------------------------------------------------
+
+- name: Archive configuration files
+  ansible.builtin.command:
+    cmd: >
+      tar czf {{ ark_backup_dir }}/config.tar.gz
+      -C {{ ark_stack_dir }} {{ ark_config_files | join(' ') }}
+  become: true
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# 5. Manifest. Checksums make the restore verifiable before it touches
+#    anything.
+# ---------------------------------------------------------------------------
+
+- name: Compute checksums for every artefact
+  ansible.builtin.shell:
+    cmd: "cd {{ ark_backup_dir }} && sha256sum *.tar.gz *.sql.gz"
+    executable: /bin/bash
+  register: ark_checksums
+  become: true
+  changed_when: false
+
+- name: Collect artefact sizes
+  ansible.builtin.shell:
+    cmd: "cd {{ ark_backup_dir }} && stat -c '%n %s' *.tar.gz *.sql.gz"
+    executable: /bin/bash
+  register: ark_sizes
+  become: true
+  changed_when: false
+
+- name: Write the manifest
+  ansible.builtin.copy:
+    dest: "{{ ark_backup_dir }}/manifest.json"
+    mode: "0640"
+    content: |
+      {
+        "backup_id": "{{ ark_backup_id }}",
+        "created_at": "{{ ark_backup_started }}",
+        "source_host": "{{ ansible_hostname }}",
+        "ark_version": "0.1.0",
+        "stack": {
+          "compose_project": "{{ ark_compose_project }}",
+          "volumes": {{ ark_volumes | to_json }},
+          "database": "{{ ark_db_name }}",
+          "app_stopped_during_backup": {{ ark_stop_app_during_backup | bool | to_json }}
+        },
+        "artifacts": [
+      {% for line in ark_checksums.stdout_lines %}
+      {% set digest = line.split()[0] %}
+      {% set fname = line.split()[1] %}
+      {% set size = (ark_sizes.stdout_lines | select('search', '^' + fname + ' ') | first).split()[1] %}
+          {
+            "name": "{{ fname }}",
+            "sha256": "{{ digest }}",
+            "bytes": {{ size }}
+          }{{ "," if not loop.last else "" }}
+      {% endfor %}
+        ],
+        "source_fingerprint": {{ ark_source_fingerprint.stdout }}
+      }
+  become: true
+
+- name: Validate the manifest is well-formed JSON
+  ansible.builtin.command:
+    cmd: "python3 -m json.tool {{ ark_backup_dir }}/manifest.json"
+  become: true
+  changed_when: false
+
+# ---------------------------------------------------------------------------
+# 6. Retention
+# ---------------------------------------------------------------------------
+
+- name: List existing backups
+  ansible.builtin.find:
+    paths: "{{ ark_backup_root }}"
+    file_type: directory
+  register: ark_existing
+  become: true
+
+- name: Remove backups beyond the retention count
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: >-
+    {{ ark_existing.files
+       | sort(attribute='path')
+       | reverse
+       | list
+       | batch(ark_retention_count) | list | last
+       if (ark_existing.files | length) > ark_retention_count else [] }}
+  become: true
+  when: (ark_existing.files | length) > ark_retention_count
+
+- name: Report
+  ansible.builtin.debug:
+    msg:
+      - "Backup complete: {{ ark_backup_dir }}"
+      - "Artefacts: {{ ark_checksums.stdout_lines | length }}"
+      - "Source fingerprint captured in manifest.json"
+      - "Restore with: ansible-playbook restore.yml -e ark_backup_id={{ ark_backup_id }}"

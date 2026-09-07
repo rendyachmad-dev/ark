@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and edit. Never commit terraform.tfvars.
+
+# Must be globally unique across all of AWS. Add something specific to you.
+bucket_name = "ark-backups-rendy-2026"
+
+# Singapore is the closest region to Surabaya.
+aws_region = "ap-southeast-1"
+
+# Lifecycle. Defaults are sensible; tighten expiration_days while testing.
+transition_to_ia_days      = 30
+transition_to_glacier_days = 90
+expiration_days            = 365

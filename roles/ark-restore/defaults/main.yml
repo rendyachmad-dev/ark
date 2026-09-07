@@ -1,0 +1,24 @@
+---
+ark_stack_dir: /home/mimin/ark
+ark_compose_project: ark
+ark_backup_root: /var/backups/ark
+
+# Which backup to restore. Pass on the command line:
+#   -e ark_backup_id=20261114T031500
+# Or leave as "latest" to pick the most recent.
+ark_backup_id: latest
+
+ark_volumes:
+  - gitea-data
+  - pg-data
+
+ark_db_container: ark-db
+ark_db_user: gitea
+ark_db_name: gitea
+ark_app_container: ark-gitea
+
+# Refuse to proceed if any checksum fails. Never make this false.
+ark_verify_checksums: true
+
+# Compare the post-restore fingerprint against the manifest and fail on drift
+ark_verify_after_restore: true

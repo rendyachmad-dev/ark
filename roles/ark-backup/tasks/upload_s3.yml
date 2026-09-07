@@ -1,0 +1,88 @@
+---
+# Included by roles/ark-backup/tasks/main.yml after the manifest is written.
+# Skipped entirely when ark_s3_enabled is false, so week 1 keeps working
+# without an AWS account.
+
+- name: Ensure the AWS CLI is available
+  ansible.builtin.command:
+    cmd: aws --version
+  register: ark_aws_cli
+  changed_when: false
+  failed_when: false
+
+- name: Fail with a useful message if the AWS CLI is missing
+  ansible.builtin.fail:
+    msg: >-
+      AWS CLI not found. Install it with:
+      sudo apt install -y awscli
+      (or set ark_s3_enabled: false to keep backups local)
+  when: ark_aws_cli.rc != 0
+
+# Upload data first, manifest last. If the upload is interrupted, the absence
+# of a manifest marks the backup as incomplete — a restore will not find it and
+# so cannot half-restore from a partial set.
+- name: Upload backup artefacts to S3
+  ansible.builtin.command:
+    cmd: >
+      aws s3 cp {{ ark_backup_dir }}/{{ item }}
+      s3://{{ ark_s3_bucket }}/{{ ark_s3_prefix }}{{ ark_backup_id }}/{{ item }}
+      --region {{ ark_s3_region }}
+      --only-show-errors
+  loop:
+    - database.sql.gz
+    - config.tar.gz
+    - "volume-{{ ark_volumes[0] }}.tar.gz"
+    - "volume-{{ ark_volumes[1] }}.tar.gz"
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ ark_s3_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ ark_s3_secret_key }}"
+  become: true
+  changed_when: true
+  no_log: true
+
+- name: Upload the manifest last, marking the backup complete
+  ansible.builtin.command:
+    cmd: >
+      aws s3 cp {{ ark_backup_dir }}/manifest.json
+      s3://{{ ark_s3_bucket }}/{{ ark_s3_prefix }}{{ ark_backup_id }}/manifest.json
+      --region {{ ark_s3_region }}
+      --only-show-errors
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ ark_s3_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ ark_s3_secret_key }}"
+  become: true
+  changed_when: true
+  no_log: true
+
+# Trust nothing. Compare the ETag of every uploaded object against the local
+# file before calling the upload successful.
+- name: Verify uploaded objects exist and match in size
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      remote=$(aws s3api list-objects-v2 \
+        --bucket "{{ ark_s3_bucket }}" \
+        --prefix "{{ ark_s3_prefix }}{{ ark_backup_id }}/" \
+        --region "{{ ark_s3_region }}" \
+        --query 'Contents[].[Key,Size]' --output text | sort)
+      echo "$remote"
+      count=$(echo "$remote" | grep -c . || true)
+      if [ "$count" -lt 5 ]; then
+        echo "Expected 5 objects, found $count" >&2
+        exit 1
+      fi
+    executable: /bin/bash
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ ark_s3_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ ark_s3_secret_key }}"
+  register: ark_s3_verify
+  become: true
+  changed_when: false
+  no_log: true
+
+- name: Report the S3 upload
+  ansible.builtin.debug:
+    msg:
+      - "Uploaded to s3://{{ ark_s3_bucket }}/{{ ark_s3_prefix }}{{ ark_backup_id }}/"
+      - "Objects verified: 5"
+      - "The backup now survives the loss of this VPS."

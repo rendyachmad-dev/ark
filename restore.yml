@@ -1,0 +1,10 @@
+---
+# DESTRUCTIVE. Drops the current volumes and restores from a backup.
+#
+#   ansible-playbook restore.yml
+#   ansible-playbook restore.yml -e ark_backup_id=20261114T031500
+- name: Restore the Ark demo stack
+  hosts: production
+  gather_facts: true
+  roles:
+    - ark-restore

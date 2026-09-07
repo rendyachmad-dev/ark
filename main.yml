@@ -1,0 +1,203 @@
+---
+# ---------------------------------------------------------------------------
+# 1. Locate and validate the backup BEFORE destroying anything
+# ---------------------------------------------------------------------------
+
+- name: Find the most recent backup
+  ansible.builtin.shell:
+    cmd: "ls -1d {{ ark_backup_root }}/*/ | sort | tail -1 | xargs basename"
+    executable: /bin/bash
+  register: ark_latest
+  become: true
+  changed_when: false
+  when: ark_backup_id == "latest"
+
+- name: Resolve the backup directory
+  ansible.builtin.set_fact:
+    ark_restore_id: "{{ ark_latest.stdout.strip() if ark_backup_id == 'latest' else ark_backup_id }}"
+
+- name: Set the restore path
+  ansible.builtin.set_fact:
+    ark_restore_dir: "{{ ark_backup_root }}/{{ ark_restore_id }}"
+
+- name: Confirm the manifest exists
+  ansible.builtin.stat:
+    path: "{{ ark_restore_dir }}/manifest.json"
+  register: ark_manifest_stat
+  become: true
+  failed_when: not ark_manifest_stat.stat.exists
+
+- name: Read the manifest
+  ansible.builtin.slurp:
+    src: "{{ ark_restore_dir }}/manifest.json"
+  register: ark_manifest_raw
+  become: true
+
+- name: Parse the manifest
+  ansible.builtin.set_fact:
+    ark_manifest: "{{ ark_manifest_raw.content | b64decode | from_json }}"
+
+- name: Show what is about to be restored
+  ansible.builtin.debug:
+    msg:
+      - "Backup:  {{ ark_manifest.backup_id }}"
+      - "Created: {{ ark_manifest.created_at }}"
+      - "Source:  {{ ark_manifest.source_host }}"
+      - "Expects: {{ ark_manifest.source_fingerprint.database.users }} users, {{ ark_manifest.source_fingerprint.database.repositories }} repositories"
+
+# ---------------------------------------------------------------------------
+# 2. Verify integrity. A corrupt backup must never reach the volumes.
+# ---------------------------------------------------------------------------
+
+- name: Verify artefact checksums
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd "{{ ark_restore_dir }}"
+      fail=0
+      {% for a in ark_manifest.artifacts %}
+      actual=$(sha256sum "{{ a.name }}" | cut -d' ' -f1)
+      if [ "$actual" != "{{ a.sha256 }}" ]; then
+        echo "MISMATCH {{ a.name }}"
+        echo "  expected {{ a.sha256 }}"
+        echo "  actual   $actual"
+        fail=1
+      else
+        echo "OK       {{ a.name }}"
+      fi
+      {% endfor %}
+      exit $fail
+    executable: /bin/bash
+  register: ark_verify
+  become: true
+  changed_when: false
+  when: ark_verify_checksums | bool
+
+- name: Show verification results
+  ansible.builtin.debug:
+    var: ark_verify.stdout_lines
+  when: ark_verify_checksums | bool
+
+# ---------------------------------------------------------------------------
+# 3. Tear down the current stack and its data
+# ---------------------------------------------------------------------------
+
+- name: Stop the stack and remove volumes
+  ansible.builtin.command:
+    cmd: docker compose down -v
+    chdir: "{{ ark_stack_dir }}"
+  changed_when: true
+
+- name: Recreate empty volumes
+  ansible.builtin.command:
+    cmd: "docker volume create {{ ark_compose_project }}_{{ item }}"
+  loop: "{{ ark_volumes }}"
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# 4. Restore volume contents
+# ---------------------------------------------------------------------------
+
+- name: Restore Docker volumes from archives
+  ansible.builtin.command:
+    cmd: >
+      docker run --rm
+      -v {{ ark_compose_project }}_{{ item }}:/target
+      -v {{ ark_restore_dir }}:/backup:ro
+      alpine:3.20
+      tar xzf /backup/volume-{{ item }}.tar.gz -C /target
+  loop: "{{ ark_volumes }}"
+  become: true
+  changed_when: true
+
+- name: Restore configuration files
+  ansible.builtin.command:
+    cmd: "tar xzf {{ ark_restore_dir }}/config.tar.gz -C {{ ark_stack_dir }}"
+  become: true
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# 5. Bring the stack back up
+# ---------------------------------------------------------------------------
+
+- name: Start the stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ ark_stack_dir }}"
+  changed_when: true
+
+- name: Wait for the database to accept connections
+  ansible.builtin.command:
+    cmd: "docker exec {{ ark_db_container }} pg_isready -U {{ ark_db_user }} -d {{ ark_db_name }}"
+  register: ark_db_ready
+  until: ark_db_ready.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+# The pg-data volume already carries the full database, so the SQL dump is a
+# second line of defence rather than the primary restore path. Applying it
+# guarantees logical consistency even if the volume archive was torn.
+- name: Restore the database from the SQL dump
+  ansible.builtin.shell:
+    cmd: >
+      set -o pipefail &&
+      gunzip -c {{ ark_restore_dir }}/database.sql.gz
+      | docker exec -i {{ ark_db_container }}
+      psql -U {{ ark_db_user }} -d {{ ark_db_name }} -v ON_ERROR_STOP=0
+    executable: /bin/bash
+  become: true
+  changed_when: true
+
+- name: Restart the application so it picks up the restored database
+  ansible.builtin.command:
+    cmd: "docker restart {{ ark_app_container }}"
+  changed_when: true
+
+- name: Wait for the application to report healthy
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/healthz"
+    status_code: 200
+  register: ark_app_health
+  until: ark_app_health.status == 200
+  retries: 30
+  delay: 5
+
+# ---------------------------------------------------------------------------
+# 6. Prove it. Row counts alone are not enough — the content hash decides.
+# ---------------------------------------------------------------------------
+
+- name: Capture the restored fingerprint
+  ansible.builtin.command:
+    cmd: ./scripts/fingerprint.sh
+    chdir: "{{ ark_stack_dir }}"
+  register: ark_restored_fingerprint
+  changed_when: false
+  when: ark_verify_after_restore | bool
+
+- name: Parse the restored fingerprint
+  ansible.builtin.set_fact:
+    ark_restored: "{{ ark_restored_fingerprint.stdout | from_json }}"
+  when: ark_verify_after_restore | bool
+
+- name: Compare against the manifest
+  ansible.builtin.debug:
+    msg:
+      - "users:        {{ ark_manifest.source_fingerprint.database.users }} -> {{ ark_restored.database.users }}"
+      - "repositories: {{ ark_manifest.source_fingerprint.database.repositories }} -> {{ ark_restored.database.repositories }}"
+      - "users_hash:   {{ 'MATCH' if ark_manifest.source_fingerprint.database.users_hash == ark_restored.database.users_hash else 'MISMATCH' }}"
+      - "git_sha256:   {{ 'MATCH' if ark_manifest.source_fingerprint.storage.git_repositories_sha256 == ark_restored.storage.git_repositories_sha256 else 'MISMATCH' }}"
+  when: ark_verify_after_restore | bool
+
+- name: Fail if the restored content does not match the source
+  ansible.builtin.assert:
+    that:
+      - ark_restored.database.users == ark_manifest.source_fingerprint.database.users
+      - ark_restored.database.repositories == ark_manifest.source_fingerprint.database.repositories
+      - ark_restored.database.users_hash == ark_manifest.source_fingerprint.database.users_hash
+      - ark_restored.storage.git_repositories_sha256 == ark_manifest.source_fingerprint.storage.git_repositories_sha256
+    fail_msg: >-
+      RESTORE FAILED VERIFICATION. The stack is running but the data does not
+      match what was backed up. Do not treat this as a successful recovery.
+    success_msg: "Restore verified. Content is byte-identical to the source."
+  when: ark_verify_after_restore | bool

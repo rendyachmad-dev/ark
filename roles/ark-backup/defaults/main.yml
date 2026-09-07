@@ -1,0 +1,39 @@
+---
+# Where the docker compose stack lives
+ark_stack_dir: /home/mimin/ark
+
+# Compose project name — determines volume names.
+# Check with: docker volume ls
+ark_compose_project: ark
+
+# Docker volumes to capture
+ark_volumes:
+  - gitea-data
+  - pg-data
+
+# Configuration files to capture alongside the data.
+# Losing these makes the data unrecoverable: GITEA_SECRET_KEY decrypts
+# session and token material in the database.
+ark_config_files:
+  - .env
+  - docker-compose.yml
+
+# Database
+ark_db_container: ark-db
+ark_db_user: gitea
+ark_db_name: gitea
+
+# Application container — stopped during backup for a consistent volume snapshot
+ark_app_container: ark-gitea
+
+# Where backups land on the VPS before they go to S3 (week 2)
+ark_backup_root: /var/backups/ark
+
+# Stop the application container while archiving volumes.
+# true  = consistent backup, brief downtime (seconds)
+# false = no downtime, risk of a torn Git object store
+# Week 1 defaults to true. Honesty beats a backup you cannot trust.
+ark_stop_app_during_backup: true
+
+# How many local backup generations to keep
+ark_retention_count: 3
