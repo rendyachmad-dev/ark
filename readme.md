@@ -77,6 +77,19 @@ This is why Ark backs up volumes rather than replaying application state, and
 why a drill only passes when the content hash matches. A recovery that produces
 *equivalent* data is not a recovery.
 
+The verification screenshot below is from a full destroy and restore cycle:
+`docker compose down -v`, then `ansible-playbook restore.yml`.
+![Restore verification](docs/screenshot1.png)
+![Restore verification](docs/screenshot2.png)
+![Restore verification](docs/screenshot3.png)
+![Restore verification](docs/screenshot4.png)
+
+One detail worth noting: the health check retries once before passing. The
+application needs a few seconds after restart before it accepts traffic, so
+a restore that checks health immediately would report failure on a recovery
+that actually succeeded. Recovery tooling has to wait for readiness, not
+just for the process to start.
+
 ## Example drill report
 *Illustrative — this is the output format the drill engine will produce.
 Real reports will be published here once the drill CLI lands.*
