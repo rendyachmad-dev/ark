@@ -78,7 +78,8 @@ why a drill only passes when the content hash matches. A recovery that produces
 *equivalent* data is not a recovery.
 
 ## Example drill report
-
+*Illustrative — this is the output format the drill engine will produce.
+Real reports will be published here once the drill CLI lands.*
 ```
 Ark Drill Report — 2026-11-14
 
