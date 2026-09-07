@@ -79,10 +79,10 @@ why a drill only passes when the content hash matches. A recovery that produces
 
 The verification screenshot below is from a full destroy and restore cycle:
 `docker compose down -v`, then `ansible-playbook restore.yml`.
-![Restore verification](docs/screenshot1.png)
+
 ![Restore verification](docs/screenshot2.png)
 ![Restore verification](docs/screenshot3.png)
-![Restore verification](docs/screenshot4.png)
+
 
 One detail worth noting: the health check retries once before passing. The
 application needs a few seconds after restart before it accepts traffic, so
