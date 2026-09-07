@@ -167,7 +167,7 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 ## Author
 
 Rendy Achmad Syafii — Site Reliability Engineer, Surabaya, Indonesia.
-rendyachmadevops@gmail.com | +62-813-3117-9500
+[LinkedIn](https://linkedin.com/in/rendy-achmad/) · rendyachmadevops@gmail.com
 
 Ark grew out of building a disaster recovery centre from scratch for a
 university infrastructure of 400+ virtual machines. This is that pattern,
