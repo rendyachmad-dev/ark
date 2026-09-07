@@ -77,7 +77,7 @@ This is why Ark backs up volumes rather than replaying application state, and
 why a drill only passes when the content hash matches. A recovery that produces
 *equivalent* data is not a recovery.
 
-The verification screenshots below is from a full destroy and restore cycle:
+The verification screenshots below are from a full destroy and restore cycle:
 `docker compose down -v`, then `ansible-playbook restore.yml`.
 
 ![Checksums verified before anything is destroyed](docs/screenshot3.png)
