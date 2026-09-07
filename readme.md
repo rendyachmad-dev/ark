@@ -60,6 +60,23 @@ paid, and agent-based. There is no open-source equivalent for the case where
 The drill is the point. A recovery plan that has never been executed is a
 hypothesis, not a plan.
 
+## Why drills verify bytes, not row counts
+
+Before writing any backup code, I tested whether the verification could
+actually detect data loss. I destroyed both volumes, redeployed the stack,
+and re-ran the seed script.
+
+Row counts came back identical — 51 users, 200 repositories, 400 actions.
+The Git object store hash did not match.
+
+Git commit objects embed timestamps, so re-creating the same logical data
+produces different bytes. Every row count check passed on an instance that had
+lost all of its original data.
+
+This is why Ark backs up volumes rather than replaying application state, and
+why a drill only passes when the content hash matches. A recovery that produces
+*equivalent* data is not a recovery.
+
 ## Example drill report
 
 ```
@@ -150,6 +167,7 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 ## Author
 
 Rendy Achmad Syafii — Site Reliability Engineer, Surabaya, Indonesia.
+rendyachmadevops@gmail.com | +62-813-3117-9500
 
 Ark grew out of building a disaster recovery centre from scratch for a
 university infrastructure of 400+ virtual machines. This is that pattern,
