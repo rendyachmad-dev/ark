@@ -77,11 +77,11 @@ This is why Ark backs up volumes rather than replaying application state, and
 why a drill only passes when the content hash matches. A recovery that produces
 *equivalent* data is not a recovery.
 
-The verification screenshot below is from a full destroy and restore cycle:
+The verification screenshots below is from a full destroy and restore cycle:
 `docker compose down -v`, then `ansible-playbook restore.yml`.
 
-![Restore verification](docs/screenshot3.png)
-![Restore verification](docs/screenshot2.png)
+![Checksums verified before anything is destroyed](docs/screenshot3.png)
+![Restore verified against the manifest fingerprint](docs/screenshot2.png)
 
 
 One detail worth noting: the health check retries once before passing. The
@@ -104,7 +104,7 @@ Restore database   2m 51s
 Restore volumes    1m 44s
 Verification         49s
 
-Data integrity: 10,000 / 10,000 rows matched
+Data integrity: 51 users, 200 repositories — content hash matched
 Drill cost: $0.03
 ```
 
