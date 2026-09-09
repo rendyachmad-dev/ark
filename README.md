@@ -53,7 +53,7 @@ paid, and agent-based. There is no open-source equivalent for the case where
 3. **Rehydrate** — an Ansible playbook turns a bare EC2 instance into a working
    copy of production: verify checksums, restore volumes and database, start the
    stack, confirm the app actually responds.
-4. **Drill** — a Python CLI runs the whole failover in an isolated VPC on a
+4. **Drill** — a Bash script runs the whole failover in an isolated VPC on a
    schedule, times it, verifies data integrity, tears everything down, and emits
    a report with measured RTO and RPO.
 
@@ -91,21 +91,24 @@ that actually succeeded. Recovery tooling has to wait for readiness, not
 just for the process to start.
 
 ## Example drill report
-*Illustrative — this is the output format the drill engine will produce.
-Real reports will be published here once the drill CLI lands.*
+*From Drill #001, run on 2026-09-09. Full history in [`docs/drills.md`](docs/drills.md).*
 ```
-Ark Drill Report — 2026-11-14
+Drill #001                          2026-09-09
 
-RTO: 6m 42s   (target < 15m)  PASS
-RPO: 3h 12m   (target < 6h)   PASS
+RTO:  1m 58s   (target < 15m)  PASS
+RPO:  182m     (target < 6h)   PASS
 
-Provision EC2      1m 18s
-Restore database   2m 51s
-Restore volumes    1m 44s
-Verification         49s
+  Provision EC2       0m 20s
+  Instance ready      0m 04s
+  Download backup     0m 02s
+  Restore             0m 25s
+  Verify              0m 12s
 
-Data integrity: 51 users, 200 repositories — content hash matched
-Drill cost: $0.03
+Database:         PASS
+Volume integrity: PASS
+Application:      PASS
+
+RESULT: PASS
 ```
 
 ## Cost
