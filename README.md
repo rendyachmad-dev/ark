@@ -128,9 +128,6 @@ You can run the calculator yourself: `./scripts/cost.sh` or `./scripts/cost.sh 1
 
 ![Glacier restore cost calculator](docs/cost-calculator.png)
 
-You can run the calculator yourself: `./scripts/cost.sh` or `./scripts/cost.sh 10240` for a 10 GB estimate.
-
-![Glacier restore cost calculator](docs/cost-calculator.png)
 ## Limitations
 
 Stated up front, because a DR tool that oversells itself is worse than none.
