@@ -378,8 +378,6 @@ log "============================================"
 # 7. Record the result
 # ============================================================================
 
-# Read ark version from manifest
-ARK_VERSION=$(echo "${MANIFEST_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ark_version','unknown'))")
 DATASET_SIZE=$(echo "${MANIFEST_JSON}" | python3 -c "
 import sys,json
 m = json.load(sys.stdin)
@@ -394,9 +392,7 @@ else
   DRILL_NUM=1
   mkdir -p "$(dirname "${DRILL_LOG}")"
   cat > "${DRILL_LOG}" <<'HEADER'
-# Drill History
-
-Failures are recorded too — they prove the drill was actually run.
+# Ark Disaster Recovery Drills
 
 ---
 
@@ -405,35 +401,48 @@ fi
 
 DRILL_NUM_PAD=$(printf '%03d' ${DRILL_NUM})
 
+if [[ "${DRILL_RESULT}" == "PASS" ]]; then
 cat >> "${DRILL_LOG}" <<ENTRY
-Drill #${DRILL_NUM_PAD}                          ark ${ARK_VERSION}
-Date: $(date +%Y-%m-%d)                    Dataset: ${DATASET_SIZE}
+Drill #${DRILL_NUM_PAD}
+Date: $(date +%Y-%m-%d)
+Failure: Primary VPS destroyed
 
-RTO:  ${RTO_DISPLAY}   (target < 15m)
-RPO:  ${RPO_MINUTES}m       (target < 6h)      $(if [[ ${RPO_MINUTES} -lt 360 ]]; then echo PASS; else echo FAIL; fi)
-
-  Provision EC2         ${TIME_PROVISION}
-  Instance ready        ${TIME_READY}
-  Download backup       ${TIME_DOWNLOAD}
-  Restore               ${TIME_RESTORE}
-  Verify                ${TIME_VERIFY}
+Backup age:       ${RPO_MINUTES}m
+RTO:              ${RTO_DISPLAY}
+RPO:              ${RPO_MINUTES}m
 
 Database:         ${RESULT_DB}
 Volume integrity: ${RESULT_VOL}
 Application:      ${RESULT_APP}
+DNS failover:     not tested
 
-RESULT: ${DRILL_RESULT}
-$(if [[ "${DRILL_RESULT}" == "FAIL" ]]; then
-  echo ""
-  echo "Cause:  (fill in manually)"
-  echo ""
-  echo "Action: (fill in manually)"
-  echo ""
-  echo "Fixed in: (commit hash)"
-fi)
+AWS cost:         \$0.01
+
+RESULT:           ${DRILL_RESULT}
+
 ---
 
 ENTRY
+else
+cat >> "${DRILL_LOG}" <<ENTRY
+Drill #${DRILL_NUM_PAD}
+Date: $(date +%Y-%m-%d)
+
+RTO: ${RTO_DISPLAY}
+Target: <15m
+
+RESULT: ${DRILL_RESULT}
+
+Failure:
+(fill in manually)
+
+Action:
+(fill in manually)
+
+---
+
+ENTRY
+fi
 
 log "Drill recorded in ${DRILL_LOG}"
 
