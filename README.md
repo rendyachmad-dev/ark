@@ -177,7 +177,7 @@ rather contribute than duplicate.
 - [x] Rehydration playbook with integrity verification (via drill.sh)
 - [x] Drill CLI with RTO/RPO measurement and Markdown reports
 - [x] Restore cost calculator across Glacier retrieval tiers
-- [ ] Unit tests against Moto; one real AWS integration drill
+- [x] One real AWS integration drill (Moto unit tests planned for CI)
 
 ## Built with
 
