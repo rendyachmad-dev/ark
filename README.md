@@ -13,7 +13,7 @@ proves it works by running failover drills that measure real RTO and RPO.
 
 ## The problem
 
-Running production on a €5/month VPS instead of AWS is a perfectly sane
+Running production on a $5/month VPS instead of AWS is a perfectly sane
 decision. Egress alone makes the difference stark: AWS charges up to $0.09/GB
 outbound, while providers like Hetzner include 20 TB per instance.
 
