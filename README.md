@@ -176,7 +176,7 @@ rather contribute than duplicate.
 - [ ] Route 53 health check and failover records
 - [x] Rehydration playbook with integrity verification (via drill.sh)
 - [x] Drill CLI with RTO/RPO measurement and Markdown reports
-- [ ] Restore cost calculator across Glacier retrieval tiers
+- [x] Restore cost calculator across Glacier retrieval tiers
 - [ ] Unit tests against Moto; one real AWS integration drill
 
 ## Built with
