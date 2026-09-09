@@ -2,5 +2,6 @@
 - name: Back up the Ark demo stack
   hosts: production
   gather_facts: true
+  become: true
   roles:
     - ark-backup

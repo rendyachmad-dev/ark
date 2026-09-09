@@ -1,0 +1,8 @@
+# Must match the bucket created by terraform/backup
+bucket_name = "ark-backups-achmadevops"
+
+# Paste your SSH public key here (cat ~/.ssh/id_ed25519.pub)
+ssh_public_key = "ssh-ed25519 AAAA... you@host"
+
+# Restrict SSH to your IP for safety. Find yours: curl -4 ifconfig.me
+# ssh_allowed_cidrs = ["YOUR.IP.HERE/32"]

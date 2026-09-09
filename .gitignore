@@ -10,3 +10,6 @@ __pycache__/
 .terraform/
 terraform.tfvars
 *.tfplan
+*.tar
+yes
+yes.pub

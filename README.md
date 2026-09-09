@@ -163,11 +163,11 @@ rather contribute than duplicate.
 
 - [x] Ansible backup role with checksummed manifest
 - [x] Verified local restore: full destroy, restore, byte-identical
-- [ ] S3 bucket, lifecycle policy and least-privilege IAM via Terraform
-- [ ] Pilot light module: VPC, launch template, Route 53 zone
+- [x] S3 bucket, lifecycle policy and least-privilege IAM via Terraform
+- [x] Pilot light module: VPC, launch template (Route 53 pending domain)
 - [ ] Route 53 health check and failover records
-- [ ] Rehydration playbook with integrity verification
-- [ ] Drill CLI with RTO/RPO measurement and Markdown reports
+- [x] Rehydration playbook with integrity verification (via drill.sh)
+- [x] Drill CLI with RTO/RPO measurement and Markdown reports
 - [ ] Restore cost calculator across Glacier retrieval tiers
 - [ ] Unit tests against Moto; one real AWS integration drill
 

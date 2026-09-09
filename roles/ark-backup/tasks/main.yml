@@ -19,7 +19,8 @@
   ansible.builtin.command:
     cmd: "docker inspect -f {% raw %}'{{.State.Running}}'{% endraw %} {{ ark_db_container }}"
   register: ark_db_state
-  changed_when: false
+  become: true
+  changed_when: true
   failed_when: ark_db_state.stdout.strip() != "true"
 
 # ---------------------------------------------------------------------------
@@ -191,3 +192,11 @@
       - "Artefacts: {{ ark_checksums.stdout_lines | length }}"
       - "Source fingerprint captured in manifest.json"
       - "Restore with: ansible-playbook restore.yml -e ark_backup_id={{ ark_backup_id }}"
+
+# ---------------------------------------------------------------------------
+# 7. Upload to S3
+# ---------------------------------------------------------------------------
+
+- name: Upload backup to S3
+  ansible.builtin.include_tasks: upload_s3.yml
+  when: ark_s3_enabled | bool
